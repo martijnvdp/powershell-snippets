@@ -320,7 +320,7 @@ Function Initialize-Menu () {
 function Set-taint (){
 <#
 .Description
-Set-taint terraform taint on all resoureces matching the module parameter.
+Set-taint terraform taint on all resources matching the module parameter.
 example: set-taint -module eks
 #>
     param(
