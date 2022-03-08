@@ -121,7 +121,7 @@ function Remove-Pods {
         if ($pods.Count -gt 0) {
             $confirmation = Read-Host "Are you sure you want to delete these pods (y/n)"
             if ($confirmation -eq 'y') {
-                foreach ($pod in $pods) { kubectl delete pod $pod.name -n $pod.namespace }
+                $pods| %{ kubectl delete pod $_.name -n $_.namespace }
             }
         }
     }
@@ -173,7 +173,7 @@ function Disable-Nodes {
         $nodes | Format-Table -AutoSize
         $confirmation = Read-Host "Are you sure you want to cordon and drain these nodes (y/n)"
         if ($confirmation -eq 'y') {
-            foreach ($node in $nodes) { kubectl drain $node.name --ignore-daemonsets --delete-emptydir-data }
+            $nodes| %{ kubectl drain $_.name --ignore-daemonsets --delete-emptydir-data }
         }
     }
 }
