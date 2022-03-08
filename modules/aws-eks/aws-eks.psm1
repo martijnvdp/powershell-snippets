@@ -1,6 +1,6 @@
 ###########################################################
 # EKS/AWS Functions for powershell 
-# import-module aws-eks
+# import-module eks
 # Requirements aws-sso-util and AWSPowershell
 ###########################################################
 #
@@ -314,5 +314,28 @@ Function Initialize-Menu () {
                 Clear-Host
             }
         }
+    }
+}
+
+function Set-taint (){
+<#
+.Description
+Set-taint terraform taint on all resoureces matching the module parameter.
+example: set-taint -module eks
+#>
+    param(
+        [string]$module
+    )
+    try{
+    $resources=terraform state list|findstr $module
+    } catch{
+        Write-Host $_
+    }
+    if ($resources -ne "" -and $resources -notlike "*No state*"){
+        $resources|%{write-host "- $_"}
+        $confirmation = Read-Host "Are you sure you want to taint these resources (y/n)"
+            if ($confirmation -eq 'y') {
+                $resources | %{$_.replace("`"","\`"")}|%{terraform taint "$_"}
+            }
     }
 }
