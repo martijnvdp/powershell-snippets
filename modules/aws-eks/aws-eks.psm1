@@ -1,29 +1,11 @@
 ###########################################################
-# EKS/AWS Functions for powershell 
-# import-module aws-eks
+# EKS/AWS/Terraform Functions for powershell 
+# import-module eks
 # Requirements aws-sso-util and AWSPowershell
 ###########################################################
 #
-# login to aws with using aws-sso-util and menu to choose profile:
-# connect-aws
-#
-# login to eks cluster with menu for aws and eks cluster:
-# connect-eks
-#
-# get eks pods matching a patern:
-# get-pods 2048
-#
-# detailed eks node info:
-# get-nodes
-#
-# delete pod with patern:
-# remove-pods 2048
-#
-# drain cordon all nodes from a nodegroup:
-# disable-nodes -nodegroup mtest-legacy
-# 
-# drain cordon all nodes matching name patern:
-# disable-nodes -name ip-100
+# See usage:
+# get-help *functionname*
 #
 # requirements:
 # Install-Module -Name AWSPowerShell
@@ -32,6 +14,11 @@
 ############################################################
 
 function connect-aws {
+    <#
+.Description
+Connect-aws connect to aws using sso profile selection menu.
+example: connect-aws
+#>
     param(
         [string]$awsProfile = ""
     ) 
@@ -49,6 +36,11 @@ function connect-aws {
 }
 
 function connect-eks {
+    <#
+.Description
+Connect-eks connect to aws using sso profile selection menu and select an eks cluster in the account.
+example: connect-eks
+#>
     param(
         [string]$name,
         [string]$awsProfile = ""
@@ -67,8 +59,35 @@ function connect-eks {
     aws eks update-kubeconfig --name $name --profile $awsProfile
 }
 
-function Get-Pods {
+function ConvertTo-Base64 () {
+    <#
+    .Description
+    Encode Text with Base64
+    #>
+    param(
+        # Input string to encode to base64
+        [Parameter(ValueFromPipeline = $true)][string]$inputString
+    )
+    Write-Host ([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($inputString)))
+}
 
+function ConvertFrom-Base64 () {
+    <#
+    .Description
+    Decode Text from Base64
+    #>
+    param(
+        # Input string to decode from base64
+        [Parameter(ValueFromPipeline = $true)][string]$inputString
+    )
+    Write-Host ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($inputString)))
+}
+
+function Get-Pods {
+    <#
+    .Description
+    Get kubernetes pods with extended info
+    #>
     param(
         [string]$name = "",
         [string]$namespace = ""
@@ -107,7 +126,10 @@ function Get-Pods {
 }
         
 function Remove-Pods {
-    
+    <#
+    .Description
+    Delete pods matching a search patern from all namespaces
+    #>
     param(
         [string]$name = ""
     )
@@ -121,15 +143,18 @@ function Remove-Pods {
         if ($pods.Count -gt 0) {
             $confirmation = Read-Host "Are you sure you want to delete these pods (y/n)"
             if ($confirmation -eq 'y') {
-                foreach ($pod in $pods) { kubectl delete pod $pod.name -n $pod.namespace }
+                $pods | % { kubectl delete pod $_.name -n $_.namespace }
             }
         }
     }
 }
 
 function Get-Nodes {
+    <#
+    .Description
+    Get kubernetes nodes with extended info
+    #>
     $nodes = kubectl get nodes -o json | convertfrom-Json
-        
     $nodesArr = [System.Collections.ArrayList]::new()
     try {
         foreach ($node in $nodes.items) {
@@ -153,9 +178,11 @@ function Get-Nodes {
     return $nodesArr  #| Format-Table -AutoSize -Property *           
 }
 
-# Drain and cordon eks nodes 
 function Disable-Nodes {
-    
+    <#
+    .Description
+    Drain and cordon kubernetes nodes matching a name or nodegroup
+    #>
     param(
         [string]$name = "",    
         [string]$nodegroup = ""
@@ -173,12 +200,16 @@ function Disable-Nodes {
         $nodes | Format-Table -AutoSize
         $confirmation = Read-Host "Are you sure you want to cordon and drain these nodes (y/n)"
         if ($confirmation -eq 'y') {
-            foreach ($node in $nodes) { kubectl drain $node.name --ignore-daemonsets --delete-emptydir-data }
+            $nodes | % { kubectl drain $_.name --ignore-daemonsets --delete-emptydir-data }
         }
     }
 }
 
 Function Initialize-Menu () {
+    <#
+    .Description
+    Generate a interactive menu
+    #>
     Param(
         [Parameter(Mandatory = $True)][String]$MenuTitle,
         [Parameter(Mandatory = $True)][array]$MenuOptions,
@@ -313,6 +344,31 @@ Function Initialize-Menu () {
             Default {
                 Clear-Host
             }
+        }
+    }
+}
+
+function Set-taint () {
+    <#
+.Description
+Set-taint terraform taint on all resources matching the resource parameter.
+example: set-taint argocd
+#>
+    param(
+         # Input string to match terraform resources in the state
+        [Parameter(ValueFromPipeline = $true)][string]$resource
+    )
+    try {
+        $resources = terraform state list | findstr $resource
+    }
+    catch {
+        Write-Host $_
+    }
+    if ($resources -ne "" -and $resources -notlike "*No state*") {
+        $resources | % { write-host "- $_" }
+        $confirmation = Read-Host "Are you sure you want to taint these resources (y/n)"
+        if ($confirmation -eq 'y') {
+            $resources | % { $_.replace("`"", "\`"") } | % { terraform taint "$_" }
         }
     }
 }
