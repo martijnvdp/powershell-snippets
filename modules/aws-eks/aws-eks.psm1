@@ -1,14 +1,15 @@
 ###########################################################
 # EKS/AWS/Terraform Functions for powershell 
 # import-module eks
-# Requirements aws-sso-util and AWSPowershell
+# Requirements aws-sso-util and aws.tools.common
 ###########################################################
 #
 # See usage:
 # get-help *functionname*
 #
 # requirements:
-# Install-Module -Name AWSPowerShell
+# Install-Module -Name AWS.Tools.Installer
+# Install-AWSToolsModule AWS.Tools.Common
 # pip install aws-sso-util
 #
 ############################################################
@@ -20,16 +21,21 @@ Connect-aws connect to aws using sso profile selection menu.
 example: connect-aws
 #>
     param(
-        [string]$awsProfile = ""
+        [string]$awsProfile = "",
+        [bool]$eks = $false
     ) 
 
     if ($awsProfile -ne "" ) {
         aws-sso-util.exe login --profile $awsProfile
         return $awsProfile
     } 
-
-    $awsProfiles = Get-AWSCredential -ListProfile
-    $choice = Initialize-Menu -MenuTitle "select profile" -MenuOptions $awsProfiles -MaximumColumnWidth 30
+    if ($eks) {
+        $awsProfiles = Get-AWSCredential -ListProfile | Where-Object { $_ -like "*eks*" -and $_ -like "*Engineer*" -or $_ -like "sandbox.SandboxUser*" }  | Sort-Object
+    }
+    else {
+        $awsProfiles = Get-AWSCredential -ListProfile | Sort-Object
+    }
+    $choice = Initialize-Menu -MenuTitle "select profile" -MenuOptions $awsProfiles -Columns 1 -MaximumColumnWidth 30
     $awsProfile = $awsProfiles[$choice]
     Start-Process -Wait -FilePath "aws-sso-util.exe" -ArgumentList "login --profile $awsProfile" -NoNewWindow
     return $awsProfile
@@ -43,11 +49,12 @@ example: connect-eks
 #>
     param(
         [string]$name,
-        [string]$awsProfile = ""
+        [string]$awsProfile = "",
+        [string]$poshPromptFile = ""
     ) 
 
     if ($awsProfile -eq "" ) {
-        $awsProfile = connect-aws
+        $awsProfile = connect-aws -eks:$true
     }
     
     if ($name -eq "" ) {
@@ -55,7 +62,12 @@ example: connect-eks
         $choice = Initialize-Menu -MenuTitle "select cluster" -MenuOptions $clusters -Columns 1 -MaximumColumnWidth 30
         $name = $clusters[$choice]
     }
-
+    if ($name -like "*prod*") {
+        Set-PoshPrompt -Theme $PSScriptRoot\posh\prod-prompt.json
+    }
+    else {
+        Set-PoshPrompt -Theme $PSScriptRoot\posh\nonprod-prompt.json
+    }
     aws eks update-kubeconfig --name $name --profile $awsProfile
 }
 
@@ -68,7 +80,7 @@ function ConvertTo-Base64 () {
         # Input string to encode to base64
         [Parameter(ValueFromPipeline = $true)][string]$inputString
     )
-    Write-Host ([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($inputString)))
+    return ([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($inputString)))
 }
 
 function ConvertFrom-Base64 () {
@@ -80,7 +92,7 @@ function ConvertFrom-Base64 () {
         # Input string to decode from base64
         [Parameter(ValueFromPipeline = $true)][string]$inputString
     )
-    Write-Host ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($inputString)))
+    return ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($inputString)))
 }
 
 function get-Answer {
@@ -117,7 +129,30 @@ function get-Answer {
     
     return (Invoke-RestMethod @RestMethodParameter).choices.text
 }
+
+function Get-AMI {
+    <#
+    .Description
+    List all ami images, sorted on version
+    .Example
+    Get-AMI -name "amazon-eks-node" -version "1.21" -awsprofile "test"
+    #>
+    param(
+        # Aws profile
+        [string]$awsProfile = "",
+        # Name
+        [string]$name = "amazon-eks-node",
+        # AMI version
+        [string]$version = "1.21"
+    )
     
+    if ($awsProfile -eq "" ) {
+        $awsProfile = connect-aws
+    }
+    
+    aws ec2 describe-images --owners amazon --filters "Name=name,Values=$name-$version*"   --query 'Images[?CreationDate] | sort_by(@, &CreationDate)[].Name'  --profile $awsProfile        
+}
+
 function Get-Pods {
     <#
     .Description
