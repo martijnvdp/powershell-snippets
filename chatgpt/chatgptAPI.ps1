@@ -11,6 +11,7 @@ param (
 $RequestBody = @{
     prompt = $question
     model  = "text-davinci-003"
+    max_tokens = 2000
 }
 
 $Header = @{ Authorization = "Bearer $($env:CHATGPT_API_KEY) " }
